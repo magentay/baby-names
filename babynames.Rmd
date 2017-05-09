@@ -1,0 +1,476 @@
+---
+output: html_document
+---
+
+# Descriptive analysis
+
+```{r echo=FALSE, results='hide',message=FALSE}
+library(dplyr)
+library(maps)
+library(ggplot2)
+
+loadBabyNames<-function(filename){
+  baby <- read.csv(paste(folder,file,sep=''), header = FALSE)
+  names(baby) = c('state', 'gender', 'year', 'name','count')
+  return(baby)
+}
+
+folder <- 'namesbystate/'
+
+list.files(folder)
+
+if (exists("babynames")){
+  remove(babynames)
+}
+
+for (file in list.files(folder)){
+  cat(file, '...\n')
+  if (grepl('.TXT', file)){
+    if (!exists("babynames")){
+      babynames<-loadBabyNames(paste(folder,file,sep=''))
+    }
+    else{
+      tmp <- loadBabyNames(paste(folder,file,sep=''))
+      babynames <- rbind(babynames, tmp)
+      rm(tmp)
+    }
+    
+  }
+}
+
+
+
+```
+
+
+###  Please describe the format of the data files. Can you identify any limitations or distortions of the data?
+
+The dataset contains 51 files for the 50 states and the District of Columbia. Each record in a file has the format: 2-digit state code, sex (M = male or F = female), 4-digit year of birth (starting with 1910, end with 2014), the 2-15 character name, and the number of occurrences of the name.
+
+
+limitations or distortions: 
+If a name has less than 5 occurrences for a year of birth in any state, it will not be shown in the dataset, and the sum of the state counts for that year will be less than the national count.
+
+
+
+### What is the most popular name of all time? (Of either gender.)
+
+```{r echo=FALSE, results='hide',message=FALSE}
+babynameSum <- babynames %>%
+  select(year,gender,name,count)%>%
+  group_by(gender, name) %>%
+  summarise(count = sum(count))
+```
+
+#### The most popular female names: 
+```{r echo=FALSE, results='hide',message=FALSE}
+popular_name_f <- babynameSum %>%
+  filter(gender == "F") %>%
+  arrange(desc(count)) 
+
+```
+
+```{r echo=FALSE}
+name1 <- popular_name_f$name[1]
+cat(as.character(name1))
+```
+
+#### The most popular male names:
+```{r echo=FALSE, results='hide',message=FALSE}
+popular_name_m <- babynameSum %>%
+  filter(gender == "M") %>%
+  arrange(desc(count)) 
+```
+
+```{r echo=FALSE}
+name1 <- popular_name_m$name[1]
+cat(as.character(name1) )
+```
+###  What is the most gender ambiguous name in 2013? 1945?
+
+#### The most gender ambiguous name in 2013:
+```{r echo=FALSE}
+babynames2013_f <- babynames %>%
+  filter(year == '2013' & gender == 'F') %>%
+  select(name, count) %>%
+  group_by(name) %>%
+  summarise(female_count = sum(count))
+babynames2013_m <- babynames %>%
+  filter(year == '2013' & gender == 'M') %>%
+  select(name, count) %>%
+  group_by(name) %>%
+  summarise(male_count = sum(count))
+
+ambiguousname2013 <- inner_join(babynames2013_f, babynames2013_m, by = 'name')
+ambiguousname2013$total <- ambiguousname2013$female_count+ambiguousname2013$male_count
+ambiguousname2013$rank <-1- abs(ambiguousname2013$female_count/ambiguousname2013$total-0.5)
+ambiguousname2013 <- ambiguousname2013[order(ambiguousname2013$rank, ambiguousname2013$total, decreasing = TRUE),] 
+```
+
+```{r echo=FALSE}
+head(ambiguousname2013)
+
+```
+
+
+#### The most gender ambiguous name in 1945:
+```{r echo=FALSE}
+babynames1945_f <- babynames %>%
+  filter(year == '1945' & gender == 'F') %>%
+  select(name, count) %>%
+  group_by(name) %>%
+  summarise(female_count = sum(count))
+babynames1945_m <- babynames %>%
+  filter(year == '1945' & gender == 'M') %>%
+  select(name, count) %>%
+  group_by(name) %>%
+  summarise(male_count = sum(count))
+
+ambiguousname1945 <- inner_join(babynames1945_f, babynames1945_m, by = 'name')
+ambiguousname1945$total <- ambiguousname1945$female_count+ambiguousname1945$male_count
+ambiguousname1945$rank <-1- abs(ambiguousname1945$female_count/ambiguousname1945$total-0.5)
+ambiguousname1945 <- ambiguousname1945[order(ambiguousname1945$rank, ambiguousname1945$total, decreasing = TRUE),] 
+```
+
+```{r echo=FALSE}
+head(ambiguousname1945)
+
+```
+
+
+
+
+###  Of the names represented in the data, find the name that has had the largest percentage increase in popularity since 1980. Largest decrease?
+    
+```{r echo=FALSE, results='hide',message=FALSE}
+babyCount <- babynames[,c('year','name','count')] %>%
+  group_by(year,name) %>%
+  summarise(count=sum(count)) %>%
+  group_by(year) %>%
+  mutate(total = sum(count))%>%
+  group_by(year,name) %>%
+  mutate(per = round(100*count/total,3))
+
+percentMap <- data.frame(name =  babynames$name)
+percentMap <- unique(percentMap)
+cnt <-1
+for (i in 1980:2014){
+  cat(i,'...\n')
+  cnt <- cnt + 1 
+  tmp <- filter(babyCount,year == toString(i))
+  tmp<-tmp[,c('name','per')]
+  
+  percentMap <-  left_join(percentMap, tmp, by =c( 'name'))
+
+  names(percentMap)[cnt] = toString(i)
+  rm(tmp)
+}
+percentMap[is.na(percentMap)] = 0
+
+percentMap$min= apply(percentMap[2:36], 1, min)
+percentMap$max= apply(percentMap[2:36], 1, max)
+percentMap$diff = percentMap$max - percentMap$min
+
+percentMap$mincol = colnames(percentMap[2:36])[max.col(-percentMap[2:36],ties.method="first")]
+percentMap$maxcol = colnames(percentMap[2:36])[max.col(percentMap[2:36],ties.method="first")]
+
+```
+
+#### The name has had the largest percentage increase:
+
+```{r echo=FALSE}
+top1 <- percentMap %>%
+  filter(maxcol>mincol)%>%
+  arrange(desc(diff))
+
+name1 <- top1$name[1]
+percent <-filter(percentMap, name==name1) 
+plot(names(percent)[2:36],percent[1,2:36], type = 'b', pch = 19, col = 'magenta', xlab = 'year', ylab = 'percentage (%)', main = paste( name1,'increased by' ,top1$diff[1]))
+
+```
+
+#### The name has had the largest precentage decrease：
+
+```{r echo=FALSE}
+top1 <- percentMap %>%
+  filter(maxcol<mincol)%>%
+  arrange(desc(diff))
+
+name1 <- top1$name[1]
+percent <-filter(percentMap, name==name1) 
+plot(names(percent)[2:36],percent[1,2:36], type = 'b', pch = 19, col = 'magenta', xlab = 'year', ylab = 'percentage (%)', main = paste( name1,'decreased by' ,top1$diff[1]))
+
+
+```
+
+###  Can you identify names that may have had an even larger increase or decrease in popularity?
+
+```{r echo=FALSE, results='hide',message=FALSE}
+babyCount <- babynames[,c('year','name','count')] %>%
+  group_by(year,name) %>%
+  summarise(count=sum(count)) 
+
+popMap <- data.frame(name =  babynames$name)
+popMap <- unique(popMap)
+cnt <-1
+for (i in 1910:2014){
+  cat(i,'...\n')
+  cnt <- cnt + 1 
+  tmp <- filter(babyCount,year == toString(i))
+  tmp<-tmp[,c('name','count')]
+  sum(duplicated(tmp$name))
+  
+  popMap <-  left_join(popMap, tmp, by =c( 'name'))
+
+  names(popMap)[cnt] = toString(i)
+  rm(tmp)
+}
+
+popMap[is.na(popMap)] = 0
+
+popMap$min= apply(popMap[2:106], 1, min)
+popMap$max= apply(popMap[2:106], 1, max)
+popMap$diff = popMap$max - popMap$min
+
+popMap$mincol = colnames(popMap[2:106])[max.col(-popMap[2:106],ties.method="first")]
+popMap$maxcol = colnames(popMap[2:106])[max.col(popMap[2:106],ties.method="first")]
+
+```
+
+#### The name has had the most popularity increase :
+
+```{r echo = FALSE}
+top1 <- popMap %>%
+  filter(maxcol>mincol)%>%
+  arrange(desc(diff))
+
+name1 <- top1$name[1]
+percent <-filter(popMap, name==name1) 
+plot(names(percent)[2:106],percent[1,2:106], type = 'b', pch = 19, col = 'magenta', xlab = 'year', ylab = 'popularity', main = paste( name1,'increased by' ,top1$diff[1]))
+
+```
+
+#### The name has had the most popularity decreased :
+```{r echo = FALSE}
+top1 <- popMap %>%
+  filter(maxcol< mincol)%>%
+  arrange(desc(diff))
+
+name1 <- top1$name[1]
+percent <-filter(popMap, name==name1) 
+plot(names(percent)[2:106],percent[1,2:106], type = 'b', pch = 19, col = 'magenta', xlab = 'year', ylab = 'popularity', main = paste( name1,'decreased by' ,top1$diff[1]))
+
+```
+
+
+# B) Insights!
+
+### The most popular names for each year
+#### The most pouplar female names:
+
+```{r echo = FALSE,  results='hide',message=FALSE}
+girlnames <- babynames %>%
+  filter(gender == 'F') %>%
+  select(year,name, count)%>%
+  group_by(year, name) %>%
+  summarise(count = sum(count))%>%
+  group_by(year) %>%
+  filter(count == max(count))%>%
+  arrange(year,name,count)
+```
+```{r echo = FALSE}
+
+qplot(year,log(count), data= girlnames, col = name)
+
+```
+
+#### The most popular male names
+```{r echo = FALSE,  results='hide',message=FALSE}
+boynames <- babynames %>%
+  filter(gender == 'M') %>%
+  select(year,name, count)%>%
+  group_by(year, name) %>%
+  summarise(count = sum(count))%>%
+  group_by(year) %>%
+  filter(count == max(count))%>%
+  arrange(year,name,count)
+
+```
+```{r echo = FALSE}
+
+qplot(year,log(count), data= boynames, col = name)
+
+
+```
+
+We can also get the most popular names for each state.
+
+### The number of distinct names descreased over the time, i.e. the diversity of name increased
+#### Plot of the number of distinct female names each year
+
+```{r echo = FALSE,  results='hide',message=FALSE}
+distinctnames <- babynames %>%
+  filter(gender == 'F') %>%
+  group_by(year) %>%
+  summarise(no_name = n_distinct(name))
+```
+```{r echo = FALSE}
+plot(distinctnames$year, distinctnames$no_name, pch=19, col = 'blue', type = 'b', main = "number of distinct female names", xlab = 'year', ylab='number of distinct female names')
+```
+
+#### Plot of the number of distinct male names each year
+```{r echo = FALSE,  results='hide',message=FALSE}
+distinctnames <- babynames %>%
+  filter(gender == 'M') %>%
+  group_by(year) %>%
+  summarise(no_name = n_distinct(name))
+```
+```{r echo = FALSE}
+plot(distinctnames$year, distinctnames$no_name, pch=19, col = 'blue', type = 'b', main = "number of distinct male names", xlab = 'year', ylab='number of distinct male names')
+```
+
+### The ambiguous names 
+
+```{r echo = FALSE,  results='hide',message=FALSE}
+babynames_f <- babynames %>%
+  filter( gender == 'F') %>%
+  select(year,name, count) %>%
+  group_by(year,name) %>%
+  summarise(female_count = sum(count))
+babynames_m <- babynames %>%
+  filter(gender == 'M') %>%
+  select(year,name, count) %>%
+  group_by(year,name) %>%
+  summarise(male_count = sum(count))
+
+ambiguousname <- inner_join(babynames_f, babynames_m, by = c('year','name'))
+
+
+years <- 1910:2014
+# ambiguous names
+names <- unique(ambiguousname$name)
+
+# fill the count for each year 
+ambiguousname_fill <- expand.grid(year = years, name = names)
+ambiguousname_fill <- left_join(ambiguousname_fill, babynames_f, by = c('year','name'))
+ambiguousname_fill <- left_join(ambiguousname_fill, babynames_m, by = c('year','name'))
+ambiguousname_fill[is.na(ambiguousname_fill)] = 0
+
+ambiguousname_fill$total <- ambiguousname_fill$female_count+ambiguousname_fill$male_count
+ambiguousname_fill$ratio <- abs(ambiguousname_fill$female_count/ambiguousname_fill$total)
+ambiguousMap <- data.frame( name = names)
+
+cnt <- 1
+for (i in 1910:2014){
+cnt <- cnt +1
+     thisyear = toString(i)
+     cat(thisyear, '...\n')
+     tmp <-  filter(ambiguousname_fill, year == thisyear)
+     tmp <- tmp[,c('name','ratio')]
+     
+    ambiguousMap  <-  left_join(ambiguousMap, tmp, by =c( 'name'))
+
+  names(ambiguousMap)[cnt] = toString(i)
+  rm(tmp)
+
+}
+
+ambiguousMap$min= apply(ambiguousMap[2:106], 1, min)
+ambiguousMap$max= apply(ambiguousMap[2:106], 1, max)
+ambiguousMap$diff = ambiguousMap$max - ambiguousMap$min
+ambiguousMap$std = apply(ambiguousMap[2:106], 1, sd)
+
+ambiguousMap$mincol = colnames(ambiguousMap[2:106])[max.col(-ambiguousMap[2:106],ties.method="first")]
+ambiguousMap$maxcol = colnames(ambiguousMap[2:106])[max.col(ambiguousMap[2:106],ties.method="first")]
+
+top1 <-ambiguousMap %>%
+  filter(maxcol< mincol)%>%
+  arrange(desc(diff))
+
+head(top1[,c('name','diff','min','max')])
+
+
+```
+
+
+#### The female names change to the male names over the time:
+```{r echo = FALSE}
+top1 <-ambiguousMap %>%
+  filter(maxcol< mincol)%>%
+  filter(min <0.2 , max >.8 )%>%
+  arrange(desc(std))
+
+as.character(top1$name)
+
+name1 <- top1$name[1]
+percent <-filter(ambiguousMap, name==name1) 
+plot(names(percent)[2:106],percent[1,2:106]*100, type = 'b', pch = 19, col = 'magenta', xlab = 'year', ylab = 'percentage of female (%)', main = paste( name1,'decreased by' ,top1$diff[1]))
+
+```
+
+#### The male names change to the female names over the time:
+```{r echo = FALSE}
+top1 <-ambiguousMap %>%
+  filter(maxcol> mincol)%>%
+  filter(min<0.2, max>.8)%>%
+  arrange(desc(std))
+as.character(top1$name)
+
+name1 <- top1$name[1]
+percent <-filter(ambiguousMap, name==name1) 
+plot(names(percent)[2:106],percent[1,2:106]*100, type = 'b', pch = 19, col = 'magenta', xlab = 'year', ylab = 'percentage of female (%)', main = paste( name1,'increased by' ,top1$diff[1]))
+
+```
+
+
+### Scale plots and video
+* For a given name, we can identify the popularity distrubtion over the states in a certain year. For example, the following plot shows the popularity distribution for "Mary" in 1980.  The video  file __'out.avi'__ shows the state popularity distribution for "Mary" from 1910 to 2014
+
+```{r echo=FALSE }
+all_states <- map_data("state")
+simpleCap <- function(x) {
+s <- strsplit(x, " ")[[1]]
+paste(toupper(substring(s, 1,1)), substring(s, 2),
+sep="", collapse=" ")
+}
+all_states$state <- sapply(all_states$region, simpleCap)
+all_states$stateabb<-state.abb[match(all_states$state,state.name)]
+all_states[is.na(all_states$stateabb),'stateabb'] = 'DC'
+
+totalstate <- data.frame(state= unique(babynames$state))
+
+data <- babynames %>%
+select(state, count, name, year) %>%
+filter(year =='1980', name =='Mary') %>%
+group_by(state) %>%
+summarise(counts = sum(count))
+data <- left_join(totalstate, data, by = 'state')
+data[is.na(data$counts), 'counts'] = 1
+
+total <- merge(all_states, data, by.x = 'stateabb', by.y = 'state')
+
+p <- ggplot()
+p <- p + geom_polygon(data=total, aes(x=long, y=lat, group = group, fill=log(total$counts),colour="white")) + scale_fill_gradientn(limits = c(0,9),colours=c("navyblue","darkmagenta","darkorange1"))
+
+P1 <- p + theme_bw()  +labs(title = paste( "Mary", '1980'), x="", y="", fill = "log(count)")
+P1 + scale_y_continuous(breaks=c()) + scale_x_continuous(breaks=c()) + theme(panel.border =  element_blank())
+  
+```  
+
+### heatmap plots
+* For a given name, the popularity distributions over the time and states can be shown in the heatmap. For example, the following plot shows the heatmap for "Mary".
+
+```{r echo=FALSE }
+data <- babynames %>%
+  select(state, count, name, year) %>%
+  filter( name =='Mary') %>%
+  group_by(year, state) %>%
+  summarise(counts = sum(count))
+
+data <- data[,c('state','year','counts')]
+
+ggplot(data = data, aes(x=state, y=year, fill=log(counts)), width = 1.8, height = 0.6) + geom_tile() + scale_fill_gradient(low = "white",high = "steelblue") +labs(title = 'Mary') + theme(axis.text.x = element_text(face="bold", color="#993333",  size=6, angle=45), axis.text.y = element_text(face="bold", color="#993333",  size=10))
+
+```
+
+ 
